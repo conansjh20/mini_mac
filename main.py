@@ -1,36 +1,104 @@
 import os
+import json
 import subprocess
+import urllib.request
+import urllib.parse
 from textual.app import App, ComposeResult
 from textual.containers import Container, Vertical
 from textual.widgets import Header, Footer, Button, Label, Input, ListView, ListItem
 from textual.screen import Screen
 
+def load_dotenv(dotenv_path=".env"):
+    """Simple .env loader without external dependencies"""
+    if os.path.exists(dotenv_path):
+        with open(dotenv_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    os.environ[k.strip()] = v.strip()
+
+load_dotenv()
+
+PLAYLIST_ID = "RDBDsb_w3hHVU"
+
 class YouTubeScreen(Screen):
-    """YouTube Playback Screen"""
+    """YouTube Playback Screen with Playlist Support"""
+    def __init__(self):
+        super().__init__()
+        self.videos = []
+
     def compose(self) -> ComposeResult:
         yield Header()
         yield Container(
-            Label("Enter YouTube Video URL:", classes="title"),
+            Label("YouTube Playlist (240p Mode):", classes="title"),
+            ListView(id="yt_list"),
+            Label("Or Enter Custom URL:", classes="title"),
             Input(placeholder="https://www.youtube.com/watch?...", id="yt_url"),
-            Button("Play", id="play_yt", variant="success"),
+            Button("Play Custom URL (240p)", id="play_yt", variant="success"),
             Button("Back to Main", id="back", variant="error")
         )
         yield Footer()
+
+    def on_mount(self) -> None:
+        self.fetch_playlist()
+
+    def fetch_playlist(self) -> None:
+        api_key = os.getenv("YOUTUBE_API_KEY")
+        if not api_key:
+            self.app.notify("YOUTUBE_API_KEY not found in .env", severity="error")
+            return
+
+        url = f"https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId={PLAYLIST_ID}&maxResults=25&key={api_key}"
+        
+        try:
+            req = urllib.request.Request(url)
+            with urllib.request.urlopen(req) as response:
+                res_data = json.loads(response.read().decode('utf-8'))
+                items = res_data.get('items', [])
+                
+                list_view = self.query_one("#yt_list", ListView)
+                list_view.clear()
+                self.videos.clear()
+
+                for i, item in enumerate(items):
+                    title = item['snippet']['title']
+                    video_id = item['snippet']['resourceId']['videoId']
+                    video_url = f"https://www.youtube.com/watch?v={video_id}"
+                    self.videos.append({"title": title, "url": video_url})
+                    list_view.append(ListItem(Label(f"{i+1}. {title}"), id=f"ytitem_{i}"))
+
+                if not items:
+                    self.app.notify("No items found in playlist.", severity="warning")
+        except Exception as e:
+            self.app.notify(f"API Error: {e}", severity="error")
+
+    def play_video(self, url: str) -> None:
+        if url:
+            self.app.notify(f"Playing in 240p: {url}")
+            try:
+                # Force 240p playback using mpv ytdl-format option
+                subprocess.Popen([
+                    'mpv',
+                    '--ytdl-format=bestvideo[height<=240]+bestaudio/best[height<=240]',
+                    url
+                ])
+            except Exception as e:
+                self.app.notify(f"Error: {e}", severity="error")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "back":
             self.app.pop_screen()
         elif event.button.id == "play_yt":
             url_input = self.query_one("#yt_url", Input)
-            url = url_input.value
-            if url:
-                self.app.notify(f"Starting playback: {url}")
-                # Use mpv to stream the video
-                # Note: On RPi console (no X11), --vo=drm might be useful.
-                try:
-                    subprocess.Popen(['mpv', url])
-                except Exception as e:
-                    self.app.notify(f"Error: {e}", severity="error")
+            self.play_video(url_input.value)
+
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        if event.item and event.item.id and event.item.id.startswith("ytitem_"):
+            index = int(event.item.id.split("_")[1])
+            if index < len(self.videos):
+                video = self.videos[index]
+                self.play_video(video["url"])
 
 class GameScreen(Screen):
     """ROM Game Execution Screen"""
@@ -141,3 +209,4 @@ class LauncherApp(App):
 if __name__ == "__main__":
     app = LauncherApp()
     app.run()
+
