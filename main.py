@@ -91,10 +91,11 @@ class YouTubeScreen(Screen):
             display_title = title if title else url
             self.app.notify(f"240p 재생 시작: {display_title}")
             try:
-                # Force 240p playback using mpv ytdl-format option
+                # Force 240p playback using mpv ytdl-format option and rotate counter-clockwise (270 degrees)
                 subprocess.Popen([
                     'mpv',
                     '--ytdl-format=bestvideo[height<=240]+bestaudio/best[height<=240]',
+                    '--video-rotate=270',
                     url
                 ])
             except Exception as e:
