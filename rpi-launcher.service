@@ -13,7 +13,7 @@ ExecStart=/usr/bin/fbterm -- /home/pi/mini_mac/venv/bin/python main.py
 StandardInput=tty
 StandardOutput=tty
 TTYPath=/dev/tty1
-Restart=always
+Restart=no
 RestartSec=5
 
 [Install]
