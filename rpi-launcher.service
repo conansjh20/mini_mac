@@ -6,8 +6,8 @@ Conflicts=getty@tty1.service
 [Service]
 Type=simple
 User=pi
-WorkingDirectory=/home/pi/rpi_tui_launcher
-ExecStart=/home/pi/rpi_tui_launcher/venv/bin/python main.py
+WorkingDirectory=/home/pi/mini_mac
+ExecStart=/home/pi/mini_mac/venv/bin/python main.py
 StandardInput=tty
 StandardOutput=tty
 TTYPath=/dev/tty1
