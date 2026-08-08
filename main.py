@@ -3,6 +3,7 @@ import json
 import subprocess
 import urllib.request
 import urllib.parse
+from textual import work
 from textual.app import App, ComposeResult
 from textual.containers import Container, Vertical
 from textual.widgets import Header, Footer, Button, Label, Input, ListView, ListItem
@@ -32,10 +33,8 @@ class YouTubeScreen(Screen):
         yield Header()
         yield Container(
             Label("YouTube Playlist (240p Mode):", classes="title"),
+            Label("재생목록을 불러오는 중입니다...", id="yt_status"),
             ListView(id="yt_list"),
-            Label("Or Enter Custom URL:", classes="title"),
-            Input(placeholder="https://www.youtube.com/watch?...", id="yt_url"),
-            Button("Play Custom URL (240p)", id="play_yt", variant="success"),
             Button("Back to Main", id="back", variant="error")
         )
         yield Footer()
@@ -43,10 +42,12 @@ class YouTubeScreen(Screen):
     def on_mount(self) -> None:
         self.fetch_playlist()
 
+    @work(thread=True)
     def fetch_playlist(self) -> None:
         api_key = os.getenv("YOUTUBE_API_KEY")
         if not api_key:
-            self.app.notify("YOUTUBE_API_KEY not found in .env", severity="error")
+            self.app.call_from_thread(self.app.notify, "YOUTUBE_API_KEY not found in .env", severity="error")
+            self.app.call_from_thread(self.update_status, "API 키가 .env에 없습니다.")
             return
 
         url = f"https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId={PLAYLIST_ID}&maxResults=25&key={api_key}"
@@ -57,25 +58,38 @@ class YouTubeScreen(Screen):
                 res_data = json.loads(response.read().decode('utf-8'))
                 items = res_data.get('items', [])
                 
-                list_view = self.query_one("#yt_list", ListView)
-                list_view.clear()
-                self.videos.clear()
-
+                videos_data = []
                 for i, item in enumerate(items):
                     title = item['snippet']['title']
                     video_id = item['snippet']['resourceId']['videoId']
                     video_url = f"https://www.youtube.com/watch?v={video_id}"
-                    self.videos.append({"title": title, "url": video_url})
-                    list_view.append(ListItem(Label(f"{i+1}. {title}"), id=f"ytitem_{i}"))
+                    videos_data.append((title, video_url))
 
-                if not items:
-                    self.app.notify("No items found in playlist.", severity="warning")
+                self.app.call_from_thread(self.populate_playlist, videos_data)
         except Exception as e:
-            self.app.notify(f"API Error: {e}", severity="error")
+            self.app.call_from_thread(self.app.notify, f"API Error: {e}", severity="error")
+            self.app.call_from_thread(self.update_status, f"로딩 실패: {e}")
 
-    def play_video(self, url: str) -> None:
+    def update_status(self, msg: str) -> None:
+        self.query_one("#yt_status", Label).update(msg)
+
+    def populate_playlist(self, videos_data: list) -> None:
+        self.videos = [{"title": t, "url": u} for t, u in videos_data]
+        list_view = self.query_one("#yt_list", ListView)
+        list_view.clear()
+
+        for i, (title, _) in enumerate(videos_data):
+            list_view.append(ListItem(Label(f"{i+1}. {title}"), id=f"ytitem_{i}"))
+
+        if videos_data:
+            self.update_status(f"총 {len(videos_data)}개의 노래를 불러왔습니다. 목록에서 곡을 선택하세요.")
+        else:
+            self.update_status("재생목록 항목이 없습니다.")
+
+    def play_video(self, url: str, title: str = "") -> None:
         if url:
-            self.app.notify(f"Playing in 240p: {url}")
+            display_title = title if title else url
+            self.app.notify(f"240p 재생 시작: {display_title}")
             try:
                 # Force 240p playback using mpv ytdl-format option
                 subprocess.Popen([
@@ -84,21 +98,18 @@ class YouTubeScreen(Screen):
                     url
                 ])
             except Exception as e:
-                self.app.notify(f"Error: {e}", severity="error")
+                self.app.notify(f"재생 오류: {e}", severity="error")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "back":
             self.app.pop_screen()
-        elif event.button.id == "play_yt":
-            url_input = self.query_one("#yt_url", Input)
-            self.play_video(url_input.value)
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         if event.item and event.item.id and event.item.id.startswith("ytitem_"):
             index = int(event.item.id.split("_")[1])
             if index < len(self.videos):
                 video = self.videos[index]
-                self.play_video(video["url"])
+                self.play_video(video["url"], video["title"])
 
 class GameScreen(Screen):
     """ROM Game Execution Screen"""
