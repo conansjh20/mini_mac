@@ -1,0 +1,18 @@
+[Unit]
+Description=Raspberry Pi TUI Launcher
+After=network.target
+Conflicts=getty@tty1.service
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/rpi_tui_launcher
+ExecStart=/home/pi/rpi_tui_launcher/venv/bin/python main.py
+StandardInput=tty
+StandardOutput=tty
+TTYPath=/dev/tty1
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
