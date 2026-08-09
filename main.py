@@ -3,6 +3,7 @@ import json
 import subprocess
 import urllib.request
 import urllib.parse
+import zipfile
 from textual import work
 from textual.app import App, ComposeResult
 from textual.containers import Container, Vertical
@@ -150,6 +151,19 @@ CORE_SEARCH_DIRS = [
 
 def find_libretro_core(rom_path: str) -> str | None:
     ext = os.path.splitext(rom_path)[1].lower()
+    
+    # zip 파일인 경우 압축 내부 파일의 확장자 확인
+    if ext == ".zip" and zipfile.is_zipfile(rom_path):
+        try:
+            with zipfile.ZipFile(rom_path, 'r') as z:
+                for filename in z.namelist():
+                    inner_ext = os.path.splitext(filename)[1].lower()
+                    if inner_ext in CORE_MAP:
+                        ext = inner_ext
+                        break
+        except Exception:
+            pass
+
     candidates = CORE_MAP.get(ext, [])
     
     found_cores = []
@@ -166,7 +180,7 @@ def find_libretro_core(rom_path: str) -> str | None:
             if cand in core_name:
                 return core_path
 
-    # 2. .zip 파일이거나 매칭 실패 시 첫 번째 코어 반환
+    # 2. 매칭 실패 시 첫 번째 코어 반환
     if found_cores:
         return found_cores[0]
 
