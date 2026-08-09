@@ -28,6 +28,7 @@ class YouTubeScreen(Screen):
     def __init__(self):
         super().__init__()
         self.videos = []
+        self.current_process = None
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -41,6 +42,18 @@ class YouTubeScreen(Screen):
 
     def on_mount(self) -> None:
         self.fetch_playlist()
+
+    def on_unmount(self) -> None:
+        self.stop_current_video()
+
+    def stop_current_video(self) -> None:
+        if self.current_process and self.current_process.poll() is None:
+            try:
+                self.current_process.terminate()
+                self.current_process.wait(timeout=1)
+            except Exception:
+                self.current_process.kill()
+            self.current_process = None
 
     @work(thread=True)
     def fetch_playlist(self) -> None:
@@ -90,9 +103,13 @@ class YouTubeScreen(Screen):
         if url:
             display_title = title if title else url
             self.app.notify(f"240p 재생 시작: {display_title}")
+            
+            # 이전 재생 중인 영상이 있으면 종료
+            self.stop_current_video()
+
             try:
                 # Force 240p playback using mpv ytdl-format option and rotate counter-clockwise (270 degrees)
-                subprocess.Popen([
+                self.current_process = subprocess.Popen([
                     'mpv',
                     '--ytdl-format=bestvideo[height<=240]+bestaudio/best[height<=240]',
                     '--video-rotate=270',
@@ -103,6 +120,7 @@ class YouTubeScreen(Screen):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "back":
+            self.stop_current_video()
             self.app.pop_screen()
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
