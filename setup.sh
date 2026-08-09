@@ -3,7 +3,7 @@
 
 echo "Updating system packages and installing dependencies..."
 sudo apt update
-sudo apt install -y python3-pip python3-venv git mpv retroarch
+sudo apt install -y python3-pip python3-venv git mpv retroarch libretro-fceumm libretro-snes9x libretro-mgba libretro-gambatte libretro-genesisplusgx
 
 echo "Initializing Git..."
 git init

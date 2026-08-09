@@ -130,6 +130,48 @@ class YouTubeScreen(Screen):
                 video = self.videos[index]
                 self.play_video(video["url"], video["title"])
 
+CORE_MAP = {
+    ".nes": ["fceumm", "nestopia"],
+    ".sfc": ["snes9x", "snes9x2010"],
+    ".smc": ["snes9x", "snes9x2010"],
+    ".gba": ["mgba", "vba_next"],
+    ".gb": ["gambatte", "mgba"],
+    ".gbc": ["gambatte", "mgba"],
+    ".md": ["genesis_plus_gx", "picodrive"],
+    ".gen": ["genesis_plus_gx", "picodrive"],
+}
+
+CORE_SEARCH_DIRS = [
+    "/usr/lib/aarch64-linux-gnu/libretro",
+    "/usr/lib/arm-linux-gnueabihf/libretro",
+    "/usr/lib/libretro",
+    os.path.expanduser("~/.config/retroarch/cores")
+]
+
+def find_libretro_core(rom_path: str) -> str | None:
+    ext = os.path.splitext(rom_path)[1].lower()
+    candidates = CORE_MAP.get(ext, [])
+    
+    found_cores = []
+    for search_dir in CORE_SEARCH_DIRS:
+        if os.path.exists(search_dir):
+            for file_name in os.listdir(search_dir):
+                if file_name.endswith("_libretro.so"):
+                    found_cores.append(os.path.join(search_dir, file_name))
+    
+    # 1. 확장자 기반 매칭 탐색
+    for core_path in found_cores:
+        core_name = os.path.basename(core_path).lower()
+        for cand in candidates:
+            if cand in core_name:
+                return core_path
+
+    # 2. .zip 파일이거나 매칭 실패 시 첫 번째 코어 반환
+    if found_cores:
+        return found_cores[0]
+
+    return None
+
 class GameScreen(Screen):
     """ROM Game Execution Screen"""
     ROM_DIR = "roms"
@@ -164,10 +206,16 @@ class GameScreen(Screen):
         selected_rom = self.rom_files[index]
         rom_path = os.path.join(self.ROM_DIR, selected_rom)
         
+        core_path = find_libretro_core(rom_path)
+        cmd = ['retroarch']
+        if core_path:
+            cmd.extend(['-L', core_path])
+        cmd.append(rom_path)
+
         self.app.notify(f"Launching game: {selected_rom}")
         try:
-            # Launch game using RetroArch
-            subprocess.Popen(['retroarch', rom_path])
+            # Launch game using RetroArch with detected core
+            subprocess.Popen(cmd)
         except Exception as e:
             self.app.notify(f"Error: {e}", severity="error")
 
