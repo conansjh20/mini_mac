@@ -132,14 +132,21 @@ class YouTubeScreen(Screen):
                 self.play_video(video["url"], video["title"])
 
 CORE_MAP = {
-    ".nes": ["fceumm", "nestopia"],
-    ".sfc": ["snes9x", "snes9x2010"],
-    ".smc": ["snes9x", "snes9x2010"],
-    ".gba": ["mgba", "vba_next"],
-    ".gb": ["gambatte", "mgba"],
-    ".gbc": ["gambatte", "mgba"],
+    ".nes": ["fceumm", "nestopia", "quicknes"],
+    ".sfc": ["snes9x", "snes9x2010", "bsnes"],
+    ".smc": ["snes9x", "snes9x2010", "bsnes"],
+    ".gba": ["mgba", "vba_next", "vbam"],
+    ".gb": ["gambatte", "mgba", "sameboy"],
+    ".gbc": ["gambatte", "mgba", "sameboy"],
     ".md": ["genesis_plus_gx", "picodrive"],
     ".gen": ["genesis_plus_gx", "picodrive"],
+    ".smd": ["genesis_plus_gx", "picodrive"],
+    ".gg": ["genesis_plus_gx", "gearsystem"],
+    ".sms": ["genesis_plus_gx", "gearsystem"],
+    ".n64": ["mupen64plus_next", "parallel_n64"],
+    ".z64": ["mupen64plus_next", "parallel_n64"],
+    ".v64": ["mupen64plus_next", "parallel_n64"],
+    ".pce": ["beetle_pce_fast", "mednafen_pce_fast"],
 }
 
 CORE_SEARCH_DIRS = [
@@ -165,25 +172,26 @@ def find_libretro_core(rom_path: str) -> str | None:
             pass
 
     candidates = CORE_MAP.get(ext, [])
-    
+    if not candidates:
+        return None
+
     found_cores = []
     for search_dir in CORE_SEARCH_DIRS:
         if os.path.exists(search_dir):
             for file_name in os.listdir(search_dir):
                 if file_name.endswith("_libretro.so"):
-                    found_cores.append(os.path.join(search_dir, file_name))
+                    full_path = os.path.join(search_dir, file_name)
+                    if os.path.isfile(full_path) and os.path.getsize(full_path) > 0:
+                        found_cores.append(full_path)
     
-    # 1. 확장자 기반 매칭 탐색
+    # 확장자 기반 매칭 탐색
     for core_path in found_cores:
         core_name = os.path.basename(core_path).lower()
         for cand in candidates:
             if cand in core_name:
                 return core_path
 
-    # 2. 매칭 실패 시 첫 번째 코어 반환
-    if found_cores:
-        return found_cores[0]
-
+    # 매칭되는 적절한 코어가 없으면 None 반환 (잘못된 코어 강제 전달 방지)
     return None
 
 class GameScreen(Screen):
@@ -224,9 +232,12 @@ class GameScreen(Screen):
         cmd = ['retroarch']
         if core_path:
             cmd.extend(['-L', core_path])
+            self.app.notify(f"Launching game: {selected_rom} ({os.path.basename(core_path)})")
+        else:
+            self.app.notify(f"Launching game: {selected_rom} (No matching core found)")
+
         cmd.append(rom_path)
 
-        self.app.notify(f"Launching game: {selected_rom}")
         try:
             # Launch game using RetroArch with detected core
             subprocess.Popen(cmd)
