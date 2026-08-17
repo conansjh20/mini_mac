@@ -127,7 +127,7 @@ class YouTubeScreen(Screen):
                 # Force 240p playback using mpv ytdl-format option and rotate counter-clockwise (270 degrees)
                 self.current_process = subprocess.Popen([
                     'mpv',
-                    '--ytdl-format=bestvideo[height<=240]+bestaudio/best[height<=240]',
+                    '--ytdl-format=best[height<=240]/bestvideo[height<=240]+bestaudio/best',
                     '--video-rotate=270',
                     url
                 ])
