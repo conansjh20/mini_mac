@@ -146,6 +146,7 @@ class YouTubeScreen(Screen):
         
         mpv_cmd = [
             'mpv',
+            '--no-video-rotate',
             f'--video-rotate={rotate}',
             '--ytdl-format=best[height<=240]/bestvideo[height<=240]+bestaudio/best',
             '--cache=yes',
@@ -251,6 +252,7 @@ class LocalVideoScreen(Screen):
         
         mpv_cmd = [
             'mpv',
+            '--no-video-rotate',
             f'--video-rotate={rotate}',
             '--cache=yes',
             '--demuxer-max-bytes=20M',
