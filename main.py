@@ -141,7 +141,7 @@ class YouTubeScreen(Screen):
         # 이전 재생 중인 영상이 있으면 종료
         self.stop_current_video()
 
-        volume = os.getenv("VOLUME", "130")
+        volume = os.getenv("VOLUME", "100")
         
         mpv_cmd = [
             'mpv',
