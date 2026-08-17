@@ -141,6 +141,8 @@ class YouTubeScreen(Screen):
         # 이전 재생 중인 영상이 있으면 종료
         self.stop_current_video()
 
+        volume = os.getenv("VOLUME", "130")
+        
         mpv_cmd = [
             'mpv',
             '--video-rotate=270',
@@ -149,6 +151,8 @@ class YouTubeScreen(Screen):
             '--demuxer-max-bytes=20M',
             '--demuxer-readahead-secs=10',
             '--audio-buffer=0.2',
+            f'--volume={volume}',
+            '--volume-max=200',
         ]
         
         audio_device = os.getenv("AUDIO_DEVICE")
