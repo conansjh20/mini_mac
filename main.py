@@ -136,49 +136,25 @@ class YouTubeScreen(Screen):
 
     @work(thread=True)
     def play_video_async(self, url: str, title: str) -> None:
-        self.app.call_from_thread(self.app.notify, f"스트림 분석 중: {title}")
+        self.app.call_from_thread(self.app.notify, f"재생 준비 중: {title}")
         
         # 이전 재생 중인 영상이 있으면 종료
         self.stop_current_video()
 
-        ydl_opts = {
-            'format': 'best[height<=240]/bestvideo[height<=240]+bestaudio/best',
-            'quiet': True,
-            'no_warnings': True,
-        }
+        mpv_cmd = [
+            'mpv',
+            '--video-rotate=270',
+            '--ytdl-format=best[height<=240]/bestvideo[height<=240]+bestaudio/best',
+            '--cache=yes',
+            '--demuxer-max-bytes=20M',
+            '--demuxer-readahead-secs=10',
+            '--audio-buffer=0.2',
+            url
+        ]
         
         try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
-                
-                video_url = None
-                audio_url = None
-                
-                # 1. 분리된 비디오/오디오 포맷(DASH)인지 체크
-                requested_formats = info.get('requested_formats')
-                if requested_formats and len(requested_formats) >= 2:
-                    for f in requested_formats:
-                        vcodec = f.get('vcodec')
-                        acodec = f.get('acodec')
-                        if vcodec and vcodec != 'none' and not video_url:
-                            video_url = f.get('url')
-                        if acodec and acodec != 'none' and not audio_url:
-                            audio_url = f.get('url')
-                
-                # 2. 단일 통합 스트림일 경우
-                if not video_url:
-                    video_url = info.get('url')
-
-                if video_url:
-                    mpv_cmd = ['mpv', '--video-rotate=270']
-                    if audio_url:
-                        mpv_cmd.append(f'--audio-file={audio_url}')
-                    mpv_cmd.append(video_url)
-
-                    self.app.call_from_thread(self.app.notify, f"240p (음성 포함) 재생 시작: {title}")
-                    self.current_process = subprocess.Popen(mpv_cmd)
-                else:
-                    self.app.call_from_thread(self.app.notify, "스트림 주소를 찾을 수 없습니다.", severity="error")
+            self.app.call_from_thread(self.app.notify, f"240p 재생 시작: {title}")
+            self.current_process = subprocess.Popen(mpv_cmd)
         except Exception as e:
             self.app.call_from_thread(self.app.notify, f"재생 오류: {e}", severity="error")
 
