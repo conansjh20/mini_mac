@@ -149,8 +149,13 @@ class YouTubeScreen(Screen):
             '--demuxer-max-bytes=20M',
             '--demuxer-readahead-secs=10',
             '--audio-buffer=0.2',
-            url
         ]
+        
+        audio_device = os.getenv("AUDIO_DEVICE")
+        if audio_device:
+            mpv_cmd.append(f'--audio-device={audio_device}')
+
+        mpv_cmd.append(url)
         
         try:
             self.app.call_from_thread(self.app.notify, f"240p 재생 시작: {title}")
