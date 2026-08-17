@@ -26,6 +26,7 @@ def load_dotenv(dotenv_path=".env"):
 load_dotenv()
 
 CHANNEL_HANDLE = "Quorum_Sensing"
+CHANNEL_ID = "UCQK1Iq7dAuh82nthwH8E0GQ"
 
 class YouTubeScreen(Screen):
     """YouTube Playback Screen with Playlist Support"""
@@ -62,42 +63,55 @@ class YouTubeScreen(Screen):
     @work(thread=True)
     def fetch_playlist(self) -> None:
         api_key = os.getenv("YOUTUBE_API_KEY")
-        if not api_key:
-            self.app.call_from_thread(self.app.notify, "YOUTUBE_API_KEY not found in .env", severity="error")
-            self.app.call_from_thread(self.update_status, "API 키가 .env에 없습니다.")
-            return
+        videos_data = []
 
-        try:
-            # 1. Get Channel ID from Handle
-            ch_url = f"https://www.googleapis.com/youtube/v3/channels?part=id&forHandle={CHANNEL_HANDLE}&key={api_key}"
-            ch_req = urllib.request.Request(ch_url)
-            with urllib.request.urlopen(ch_req) as ch_res:
-                ch_data = json.loads(ch_res.read().decode('utf-8'))
-                items = ch_data.get('items', [])
-                if not items:
-                    self.app.call_from_thread(self.update_status, f"채널을 찾을 수 없습니다: @{CHANNEL_HANDLE}")
-                    return
-                channel_id = items[0]['id']
+        # 1. Try Official YouTube Data API
+        if api_key:
+            try:
+                search_url = f"https://www.googleapis.com/youtube/v3/search?part=snippet&channelId={CHANNEL_ID}&order=viewCount&type=video&maxResults=25&key={api_key}"
+                s_req = urllib.request.Request(search_url)
+                with urllib.request.urlopen(s_req) as s_res:
+                    res_data = json.loads(s_res.read().decode('utf-8'))
+                    v_items = res_data.get('items', [])
 
-            # 2. Fetch popular videos ordered by viewCount
-            search_url = f"https://www.googleapis.com/youtube/v3/search?part=snippet&channelId={channel_id}&order=viewCount&type=video&maxResults=25&key={api_key}"
-            s_req = urllib.request.Request(search_url)
-            with urllib.request.urlopen(s_req) as s_res:
-                res_data = json.loads(s_res.read().decode('utf-8'))
-                v_items = res_data.get('items', [])
-
+                    for item in v_items:
+                        raw_title = item['snippet']['title']
+                        clean_title = html.unescape(raw_title)
+                        video_id = item['id']['videoId']
+                        video_url = f"https://www.youtube.com/watch?v={video_id}"
+                        videos_data.append((clean_title, video_url))
+            except Exception:
                 videos_data = []
-                for item in v_items:
-                    raw_title = item['snippet']['title']
-                    clean_title = html.unescape(raw_title)
-                    video_id = item['id']['videoId']
-                    video_url = f"https://www.youtube.com/watch?v={video_id}"
-                    videos_data.append((clean_title, video_url))
 
-                self.app.call_from_thread(self.populate_playlist, videos_data)
-        except Exception as e:
-            self.app.call_from_thread(self.app.notify, f"API Error: {e}", severity="error")
-            self.app.call_from_thread(self.update_status, f"로딩 실패: {e}")
+        # 2. Fallback to yt-dlp if API fails or quota exceeded
+        if not videos_data:
+            try:
+                ydl_opts = {
+                    'extract_flat': 'in_playlist',
+                    'playlistend': 25,
+                    'quiet': True,
+                    'no_warnings': True,
+                }
+                popular_url = f"https://www.youtube.com/@{CHANNEL_HANDLE}/videos?view=0&sort=p"
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(popular_url, download=False)
+                    entries = info.get('entries', [])
+                    for entry in entries:
+                        title = html.unescape(entry.get('title', 'Untitled'))
+                        url = entry.get('url')
+                        if not url and entry.get('id'):
+                            url = f"https://www.youtube.com/watch?v={entry.get('id')}"
+                        if url:
+                            videos_data.append((title, url))
+            except Exception as e:
+                self.app.call_from_thread(self.app.notify, f"목록 불러오기 실패: {e}", severity="error")
+                self.app.call_from_thread(self.update_status, f"로딩 실패: {e}")
+                return
+
+        if videos_data:
+            self.app.call_from_thread(self.populate_playlist, videos_data)
+        else:
+            self.app.call_from_thread(self.update_status, "재생목록 항목이 없습니다.")
 
     def update_status(self, msg: str) -> None:
         self.query_one("#yt_status", Label).update(msg)
