@@ -4,8 +4,10 @@ import subprocess
 import urllib.request
 import urllib.parse
 import zipfile
+import html
 from textual import work
 from textual.app import App, ComposeResult
+from textual.binding import Binding
 from textual.containers import Container, Vertical
 from textual.widgets import Header, Footer, Button, Label, Input, ListView, ListItem
 from textual.screen import Screen
@@ -22,7 +24,7 @@ def load_dotenv(dotenv_path=".env"):
 
 load_dotenv()
 
-PLAYLIST_ID = "RDBDsb_w3hHVU"
+CHANNEL_HANDLE = "Quorum_Sensing"
 
 class YouTubeScreen(Screen):
     """YouTube Playback Screen with Playlist Support"""
@@ -34,8 +36,8 @@ class YouTubeScreen(Screen):
     def compose(self) -> ComposeResult:
         yield Header()
         yield Container(
-            Label("YouTube Playlist (240p Mode):", classes="title"),
-            Label("재생목록을 불러오는 중입니다...", id="yt_status"),
+            Label(f"@{CHANNEL_HANDLE} 인기 동영상 (240p Mode):", classes="title"),
+            Label("인기 동영상 목록을 불러오는 중입니다...", id="yt_status"),
             ListView(id="yt_list"),
             Button("Back to Main", id="back", variant="error")
         )
@@ -64,20 +66,32 @@ class YouTubeScreen(Screen):
             self.app.call_from_thread(self.update_status, "API 키가 .env에 없습니다.")
             return
 
-        url = f"https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId={PLAYLIST_ID}&maxResults=25&key={api_key}"
-        
         try:
-            req = urllib.request.Request(url)
-            with urllib.request.urlopen(req) as response:
-                res_data = json.loads(response.read().decode('utf-8'))
-                items = res_data.get('items', [])
-                
+            # 1. Get Channel ID from Handle
+            ch_url = f"https://www.googleapis.com/youtube/v3/channels?part=id&forHandle={CHANNEL_HANDLE}&key={api_key}"
+            ch_req = urllib.request.Request(ch_url)
+            with urllib.request.urlopen(ch_req) as ch_res:
+                ch_data = json.loads(ch_res.read().decode('utf-8'))
+                items = ch_data.get('items', [])
+                if not items:
+                    self.app.call_from_thread(self.update_status, f"채널을 찾을 수 없습니다: @{CHANNEL_HANDLE}")
+                    return
+                channel_id = items[0]['id']
+
+            # 2. Fetch popular videos ordered by viewCount
+            search_url = f"https://www.googleapis.com/youtube/v3/search?part=snippet&channelId={channel_id}&order=viewCount&type=video&maxResults=25&key={api_key}"
+            s_req = urllib.request.Request(search_url)
+            with urllib.request.urlopen(s_req) as s_res:
+                res_data = json.loads(s_res.read().decode('utf-8'))
+                v_items = res_data.get('items', [])
+
                 videos_data = []
-                for i, item in enumerate(items):
-                    title = item['snippet']['title']
-                    video_id = item['snippet']['resourceId']['videoId']
+                for item in v_items:
+                    raw_title = item['snippet']['title']
+                    clean_title = html.unescape(raw_title)
+                    video_id = item['id']['videoId']
                     video_url = f"https://www.youtube.com/watch?v={video_id}"
-                    videos_data.append((title, video_url))
+                    videos_data.append((clean_title, video_url))
 
                 self.app.call_from_thread(self.populate_playlist, videos_data)
         except Exception as e:
@@ -97,6 +111,7 @@ class YouTubeScreen(Screen):
 
         if videos_data:
             self.update_status(f"총 {len(videos_data)}개의 노래를 불러왔습니다. 목록에서 곡을 선택하세요.")
+            list_view.focus()
         else:
             self.update_status("재생목록 항목이 없습니다.")
 
@@ -219,6 +234,9 @@ class GameScreen(Screen):
         
         self.rom_files = roms
 
+    def on_mount(self) -> None:
+        self.query_one("#rom_list", ListView).focus()
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "back":
             self.app.pop_screen()
@@ -255,6 +273,9 @@ class MainScreen(Screen):
             yield Button("3. Shutdown System", id="btn_shutdown", variant="warning")
             yield Button("Quit TUI", id="btn_quit", variant="error")
         yield Footer()
+
+    def on_mount(self) -> None:
+        self.query_one("#btn_youtube", Button).focus()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn_youtube":
@@ -303,7 +324,11 @@ class LauncherApp(App):
     """
     
     BINDINGS = [
-        ("q", "quit", "Quit Application"),
+        Binding("q", "quit", "Quit Application"),
+        Binding("down", "focus_next", "Focus Next", show=False),
+        Binding("up", "focus_previous", "Focus Previous", show=False),
+        Binding("right", "focus_next", "Focus Next", show=False),
+        Binding("left", "focus_previous", "Focus Previous", show=False),
     ]
 
     def on_mount(self) -> None:
