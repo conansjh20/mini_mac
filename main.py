@@ -3,7 +3,6 @@ import json
 import subprocess
 import urllib.request
 import urllib.parse
-import zipfile
 import html
 import yt_dlp
 from textual import work
@@ -195,131 +194,14 @@ class YouTubeScreen(Screen):
                 video = self.videos[index]
                 self.play_video(video["url"], video["title"])
 
-CORE_MAP = {
-    ".nes": ["fceumm", "nestopia", "quicknes"],
-    ".sfc": ["snes9x", "snes9x2010", "bsnes"],
-    ".smc": ["snes9x", "snes9x2010", "bsnes"],
-    ".gba": ["mgba", "vba_next", "vbam"],
-    ".gb": ["gambatte", "mgba", "sameboy"],
-    ".gbc": ["gambatte", "mgba", "sameboy"],
-    ".md": ["genesis_plus_gx", "picodrive"],
-    ".gen": ["genesis_plus_gx", "picodrive"],
-    ".smd": ["genesis_plus_gx", "picodrive"],
-    ".gg": ["genesis_plus_gx", "gearsystem"],
-    ".sms": ["genesis_plus_gx", "gearsystem"],
-    ".n64": ["mupen64plus_next", "parallel_n64"],
-    ".z64": ["mupen64plus_next", "parallel_n64"],
-    ".v64": ["mupen64plus_next", "parallel_n64"],
-    ".pce": ["beetle_pce_fast", "mednafen_pce_fast"],
-}
-
-CORE_SEARCH_DIRS = [
-    "/usr/lib/aarch64-linux-gnu/libretro",
-    "/usr/lib/arm-linux-gnueabihf/libretro",
-    "/usr/lib/libretro",
-    os.path.expanduser("~/.config/retroarch/cores")
-]
-
-def find_libretro_core(rom_path: str) -> str | None:
-    ext = os.path.splitext(rom_path)[1].lower()
-    
-    # zip 파일인 경우 압축 내부 파일의 확장자 확인
-    if ext == ".zip" and zipfile.is_zipfile(rom_path):
-        try:
-            with zipfile.ZipFile(rom_path, 'r') as z:
-                for filename in z.namelist():
-                    inner_ext = os.path.splitext(filename)[1].lower()
-                    if inner_ext in CORE_MAP:
-                        ext = inner_ext
-                        break
-        except Exception:
-            pass
-
-    candidates = CORE_MAP.get(ext, [])
-    if not candidates:
-        return None
-
-    found_cores = []
-    for search_dir in CORE_SEARCH_DIRS:
-        if os.path.exists(search_dir):
-            for file_name in os.listdir(search_dir):
-                if file_name.endswith("_libretro.so"):
-                    full_path = os.path.join(search_dir, file_name)
-                    if os.path.isfile(full_path) and os.path.getsize(full_path) > 0:
-                        found_cores.append(full_path)
-    
-    # 확장자 기반 매칭 탐색
-    for core_path in found_cores:
-        core_name = os.path.basename(core_path).lower()
-        for cand in candidates:
-            if cand in core_name:
-                return core_path
-
-    # 매칭되는 적절한 코어가 없으면 None 반환 (잘못된 코어 강제 전달 방지)
-    return None
-
-class GameScreen(Screen):
-    """ROM Game Execution Screen"""
-    ROM_DIR = "roms"
-    
-    def compose(self) -> ComposeResult:
-        yield Header()
-        
-        # Create ROM folder if it doesn't exist
-        if not os.path.exists(self.ROM_DIR):
-            os.makedirs(self.ROM_DIR)
-            
-        roms = os.listdir(self.ROM_DIR)
-        
-        yield Container(
-            Label("Game List (files in roms folder):", classes="title"),
-            ListView(
-                *[ListItem(Label(rom), id=f"rom_{i}") for i, rom in enumerate(roms)],
-                id="rom_list"
-            ),
-            Button("Back to Main", id="back", variant="error")
-        )
-        yield Footer()
-        
-        self.rom_files = roms
-
-    def on_mount(self) -> None:
-        self.query_one("#rom_list", ListView).focus()
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "back":
-            self.app.pop_screen()
-
-    def on_list_view_selected(self, event: ListView.Selected) -> None:
-        index = int(event.item.id.split("_")[1])
-        selected_rom = self.rom_files[index]
-        rom_path = os.path.join(self.ROM_DIR, selected_rom)
-        
-        core_path = find_libretro_core(rom_path)
-        cmd = ['retroarch']
-        if core_path:
-            cmd.extend(['-L', core_path])
-            self.app.notify(f"Launching game: {selected_rom} ({os.path.basename(core_path)})")
-        else:
-            self.app.notify(f"Launching game: {selected_rom} (No matching core found)")
-
-        cmd.append(rom_path)
-
-        try:
-            # Launch game using RetroArch with detected core
-            subprocess.Popen(cmd)
-        except Exception as e:
-            self.app.notify(f"Error: {e}", severity="error")
-
 class MainScreen(Screen):
     """Main Menu Screen"""
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         with Vertical(id="main_menu"):
-            yield Label("Raspberry Pi Media & Game Launcher", id="main_title")
+            yield Label("Raspberry Pi Media Launcher", id="main_title")
             yield Button("1. YouTube", id="btn_youtube", variant="primary")
-            yield Button("2. ROM Games", id="btn_games", variant="primary")
-            yield Button("3. Shutdown System", id="btn_shutdown", variant="warning")
+            yield Button("2. Shutdown System", id="btn_shutdown", variant="warning")
             yield Button("Quit TUI", id="btn_quit", variant="error")
         yield Footer()
 
@@ -329,8 +211,6 @@ class MainScreen(Screen):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn_youtube":
             self.app.push_screen(YouTubeScreen())
-        elif event.button.id == "btn_games":
-            self.app.push_screen(GameScreen())
         elif event.button.id == "btn_shutdown":
             self.app.notify("Shutting down...")
             subprocess.Popen(['sudo', 'shutdown', '-h', 'now'])
