@@ -179,6 +179,111 @@ class YouTubeScreen(Screen):
                 video = self.videos[index]
                 self.play_video(video["url"], video["title"])
 
+class LocalVideoScreen(Screen):
+    """Local Video Player Screen for files in ./videos directory"""
+    VIDEOS_DIR = "videos"
+    VALID_EXTENSIONS = ('.mp4', '.mkv', '.avi', '.mov', '.webm', '.flv', '.m4v', '.ts', '.3gp')
+
+    def __init__(self):
+        super().__init__()
+        self.video_files = []
+        self.current_process = None
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        yield Container(
+            Label("로컬 비디오 목록 (videos 폴더):", classes="title"),
+            Label("비디오 파일 검색 중...", id="local_status"),
+            ListView(id="local_list"),
+            Button("새로고침", id="btn_refresh", variant="primary"),
+            Button("Back to Main", id="back", variant="error")
+        )
+        yield Footer()
+
+    def on_mount(self) -> None:
+        self.load_videos()
+
+    def on_unmount(self) -> None:
+        self.stop_current_video()
+
+    def stop_current_video(self) -> None:
+        if self.current_process and self.current_process.poll() is None:
+            try:
+                self.current_process.terminate()
+                self.current_process.wait(timeout=1)
+            except Exception:
+                self.current_process.kill()
+            self.current_process = None
+
+    def load_videos(self) -> None:
+        if not os.path.exists(self.VIDEOS_DIR):
+            try:
+                os.makedirs(self.VIDEOS_DIR)
+            except Exception:
+                pass
+
+        if os.path.exists(self.VIDEOS_DIR):
+            files = os.listdir(self.VIDEOS_DIR)
+            self.video_files = [f for f in files if f.lower().endswith(self.VALID_EXTENSIONS)]
+            self.video_files.sort()
+        else:
+            self.video_files = []
+
+        list_view = self.query_one("#local_list", ListView)
+        list_view.clear()
+
+        for i, f_name in enumerate(self.video_files):
+            list_view.append(ListItem(Label(f"{i+1}. {f_name}"), id=f"localitem_{i}"))
+
+        status_label = self.query_one("#local_status", Label)
+        if self.video_files:
+            status_label.update(f"총 {len(self.video_files)}개의 비디오 파일이 발견되었습니다.")
+            list_view.focus()
+        else:
+            status_label.update("videos 폴더에 비디오 파일이 없습니다.")
+
+    def play_video(self, file_path: str, file_name: str) -> None:
+        self.stop_current_video()
+
+        volume = os.getenv("VOLUME", "100")
+        mpv_cmd = [
+            'mpv',
+            '--video-rotate=270',
+            '--cache=yes',
+            '--demuxer-max-bytes=20M',
+            '--demuxer-readahead-secs=10',
+            '--audio-buffer=0.2',
+            f'--volume={volume}',
+            '--volume-max=200',
+        ]
+        
+        audio_device = os.getenv("AUDIO_DEVICE")
+        if audio_device:
+            mpv_cmd.append(f'--audio-device={audio_device}')
+
+        mpv_cmd.append(file_path)
+
+        try:
+            self.app.notify(f"비디오 재생 시작: {file_name}")
+            self.current_process = subprocess.Popen(mpv_cmd)
+        except Exception as e:
+            self.app.notify(f"재생 오류: {e}", severity="error")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "back":
+            self.stop_current_video()
+            self.app.pop_screen()
+        elif event.button.id == "btn_refresh":
+            self.load_videos()
+
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        if event.item and event.item.id and event.item.id.startswith("localitem_"):
+            index = int(event.item.id.split("_")[1])
+            if index < len(self.video_files):
+                f_name = self.video_files[index]
+                full_path = os.path.join(self.VIDEOS_DIR, f_name)
+                self.play_video(full_path, f_name)
+
 class MainScreen(Screen):
     """Main Menu Screen"""
     def compose(self) -> ComposeResult:
@@ -186,7 +291,8 @@ class MainScreen(Screen):
         with Vertical(id="main_menu"):
             yield Label("Raspberry Pi Media Launcher", id="main_title")
             yield Button("1. YouTube", id="btn_youtube", variant="primary")
-            yield Button("2. Shutdown System", id="btn_shutdown", variant="warning")
+            yield Button("2. Local Videos (videos/)", id="btn_local_videos", variant="primary")
+            yield Button("3. Shutdown System", id="btn_shutdown", variant="warning")
             yield Button("Quit TUI", id="btn_quit", variant="error")
         yield Footer()
 
@@ -196,6 +302,8 @@ class MainScreen(Screen):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn_youtube":
             self.app.push_screen(YouTubeScreen())
+        elif event.button.id == "btn_local_videos":
+            self.app.push_screen(LocalVideoScreen())
         elif event.button.id == "btn_shutdown":
             self.app.notify("Shutting down...")
             subprocess.Popen(['sudo', 'shutdown', '-h', 'now'])
