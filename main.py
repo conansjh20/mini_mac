@@ -142,7 +142,7 @@ class YouTubeScreen(Screen):
         self.stop_current_video()
 
         volume = os.getenv("VOLUME", "100")
-        rotate = os.getenv("VIDEO_ROTATE", "270")
+        rotate = os.getenv("VIDEO_ROTATE", "90")
         
         mpv_cmd = [
             'mpv',
@@ -248,7 +248,7 @@ class LocalVideoScreen(Screen):
         self.stop_current_video()
 
         volume = os.getenv("VOLUME", "100")
-        rotate = os.getenv("VIDEO_ROTATE", "270")
+        rotate = os.getenv("VIDEO_ROTATE", "90")
         
         mpv_cmd = [
             'mpv',
