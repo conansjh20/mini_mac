@@ -5,6 +5,7 @@ import urllib.request
 import urllib.parse
 import zipfile
 import html
+import yt_dlp
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -118,21 +119,41 @@ class YouTubeScreen(Screen):
     def play_video(self, url: str, title: str = "") -> None:
         if url:
             display_title = title if title else url
-            self.app.notify(f"240p 재생 시작: {display_title}")
-            
-            # 이전 재생 중인 영상이 있으면 종료
-            self.stop_current_video()
+            self.play_video_async(url, display_title)
 
-            try:
-                # Force 240p playback using mpv ytdl-format option and rotate counter-clockwise (270 degrees)
-                self.current_process = subprocess.Popen([
-                    'mpv',
-                    '--ytdl-format=best[height<=240]/bestvideo[height<=240]+bestaudio/best',
-                    '--video-rotate=270',
-                    url
-                ])
-            except Exception as e:
-                self.app.notify(f"재생 오류: {e}", severity="error")
+    @work(thread=True)
+    def play_video_async(self, url: str, title: str) -> None:
+        self.app.call_from_thread(self.app.notify, f"스트림 분석 중: {title}")
+        
+        # 이전 재생 중인 영상이 있으면 종료
+        self.stop_current_video()
+
+        ydl_opts = {
+            'format': 'best[height<=240]/bestvideo[height<=240]+bestaudio/best',
+            'quiet': True,
+            'no_warnings': True,
+        }
+        
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+                stream_url = info.get('url')
+                if not stream_url:
+                    formats = info.get('requested_formats')
+                    if formats and len(formats) > 0:
+                        stream_url = formats[0].get('url')
+
+                if stream_url:
+                    self.app.call_from_thread(self.app.notify, f"240p 재생 시작: {title}")
+                    self.current_process = subprocess.Popen([
+                        'mpv',
+                        '--video-rotate=270',
+                        stream_url
+                    ])
+                else:
+                    self.app.call_from_thread(self.app.notify, "스트림 주소를 찾을 수 없습니다.", severity="error")
+        except Exception as e:
+            self.app.call_from_thread(self.app.notify, f"재생 오류: {e}", severity="error")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "back":
