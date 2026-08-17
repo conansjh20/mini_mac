@@ -142,10 +142,11 @@ class YouTubeScreen(Screen):
         self.stop_current_video()
 
         volume = os.getenv("VOLUME", "100")
-        rotate = os.getenv("VIDEO_ROTATE")
+        rotate = os.getenv("YOUTUBE_ROTATE") or os.getenv("VIDEO_ROTATE")
         
         mpv_cmd = [
             'mpv',
+            '--fs',
             '--ytdl-format=best[height<=240]/bestvideo[height<=240]+bestaudio/best',
             '--cache=yes',
             '--demuxer-max-bytes=20M',
@@ -249,10 +250,11 @@ class LocalVideoScreen(Screen):
         self.stop_current_video()
 
         volume = os.getenv("VOLUME", "100")
-        rotate = os.getenv("VIDEO_ROTATE")
+        rotate = os.getenv("LOCAL_ROTATE") or os.getenv("VIDEO_ROTATE")
         
         mpv_cmd = [
             'mpv',
+            '--fs',
             '--cache=yes',
             '--demuxer-max-bytes=20M',
             '--demuxer-readahead-secs=10',
